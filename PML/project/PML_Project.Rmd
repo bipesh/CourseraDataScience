@@ -1,0 +1,96 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Bipesh Pokharel"
+date: "11/21/2015"
+output: html_document
+---
+
+<b>Introduction</b>
+In this project we are analyzing data about weight lifted exercises from project Human Activity Recognition(HAR) on its website http://groupware.les.inf.puc-rio.br/har. The data is from accelerometers on the belt, forearm, arm, and dumbell of 6 research study participants. Training data consists of accelerometer data and a label identifying the quality of the activity the participant was doing. Testing data consists of accelerometer data without the identifying label. Goal of this project is to predict labels for the test set observations.
+
+<b>Import Data Set</b>
+
+```{r echo=FALSE, message=FALSE}
+# Load Libraries
+library(caret)
+library(randomForest)
+set.seed(100)
+```
+```{r echo=TRUE, message=FALSE}
+train.raw=read.csv(file="./data/pml-training.csv",head=TRUE,sep=",",na.strings=c("NA","#DIV/0!",""))
+test.raw=read.csv(file="./data/pml-testing.csv",head=TRUE,sep=",")
+```
+
+<b>Clean Data</b>
+
+We are cleaning data by dropping removing columns with all NAs and zeros and dropping features that are not in the submit set. 
+
+```{r echo=TRUE, message=FALSE}
+train.clean<-train.raw[,-seq(1:7)]
+test.clean<-test.raw[,-seq(1:7)]
+hasNA<-as.vector(sapply(train.clean[,1:152],function(x) {length(which(is.na(x)))!=0}))
+train.clean<-train.clean[,!hasNA]
+test.clean<-test.clean[,!hasNA]
+```
+
+<b>Partition Data</b>
+
+There are 19,622 observations in the training set, so in order to reduce time and to be able to perform cross-validation, a training subset is created with 70% of the original training data set to be used for training and the remaining 30% to be used as the testing set. We will find out how much accuracy is lost due to PCA
+
+```{r echo=TRUE, message=FALSE}
+train.part<-createDataPartition(train.clean$classe, p = 0.7)[[1]]
+train.training<-train.clean[train.part,]
+train.testing<-train.clean[-train.part,]
+```
+
+<b>Preproces</b>
+
+Preprocess with PCA for both training and testing
+
+```{r echo=TRUE, message=FALSE}
+train.preProc<-preProcess(train.training[,-53],method="pca")
+train.PCA<-predict(train.preProc,train.training[,-53])
+train.PCA$classe=train.training$classe
+test.PCA<-predict(train.preProc,train.testing[,-53])
+test.PCA$classe=train.testing$classe
+```
+<b>Training Data</b>
+
+Training full data with Random Forest
+```{r echo=TRUE, message=FALSE}
+train.fitFullRF<-randomForest(train.training$classe ~.,data = train.training,importance = TRUE)
+train.predictFullRF<-predict(train.fitFullRF,train.testing)
+train.fullCM<-confusionMatrix(train.predictFullRF,train.testing$classe)
+train.fullCM$overall
+```
+
+Training PCA Data with Random Forest
+```{r echo=TRUE, message=FALSE}
+train.fitpcaRF<-randomForest(train.PCA$classe ~.,data = train.PCA,importance = TRUE)
+train.predictpcaRF<-predict(train.fitpcaRF,test.PCA)
+train.pcaCM <- confusionMatrix(train.predictpcaRF,test.PCA$classe)
+train.pcaCM$overall
+```
+
+<b>Training Error</b>
+
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally during the run. However, the error does decrease with the number 
+of trees. The following plot shows the training error vs # of trees. 
+```{r echo=TRUE, message=FALSE}
+plot(train.fitFullRF,main="Error vs number of trees")
+```
+
+<b>Accuracy</b>
+```{r echo=TRUE, message=FALSE}
+train.fullCM$overall[1]-train.pcaCM$overall[1]
+```
+PCA only loses ~1.8% accuracy. 
+
+<b>Prediction</b>
+
+Applying Random Forest on training data and generating preciction on test data. 
+```{r}
+train.finalRF<-randomForest(train.clean$classe ~.,data = train.clean,importance = TRUE)
+train.prediction<-predict(train.finalRF,test.clean)
+train.prediction
+```

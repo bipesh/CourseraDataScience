@@ -1,0 +1,112 @@
+---
+title: "PML Project"
+output: html_document
+---
+
+#*Introduction*
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. 
+
+*The packages included:*
+```{r, collapse=TRUE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rattle)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+
+*Input Data*
+
+```{r, echo=FALSE}
+train_URL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_URL <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+traing_file <-"pml-training.csv"
+test_file <- "pml-testing.csv"
+download.file(url=train_URL, destfile=traing_file, method="curl")
+download.file(url=test_URL, destfile=test_file, method="curl")
+```
+
+```{r}
+training <- read.csv(traing_file, na.strings=c("NA",""), header=TRUE)
+testing <-read.csv(test_file, na.strings=c("NA",""), header=TRUE)
+```
+
+```{r, eval=T}
+str(training)
+```
+
+*Remove NA*
+
+```{r}
+var <- names(training)[apply(training, 2, function(x) table(is.na(x))[1]==19622)]   
+training1<- training[,var]
+testing1 <- testing[,var[-length(var)]]
+```
+
+```{r}
+removeIndex <- grep("timestamp|X|user_name|new_window|num_window",names(training1))
+training2 <- training1[,-c(removeIndex, length(training1))]
+testing2  <- training1[,-c(removeIndex, length(training1))]
+
+nzv <- nearZeroVar(training2, saveMetrics=TRUE)
+summary(nzv)
+```
+
+```{r, tidy.opts=T}
+correlations <- cor(training2)                                 
+corrplot(correlations,order = "hclust",tl.cex = .5)
+```
+
+*Remove High Correlation*
+
+```{r}
+highCorr <- findCorrelation(correlations, cutoff = .75)    
+predictor <- training2[, -highCorr]      
+filtered.testing3 <- testing2[, -highCorr]
+classe<-training1$classe                      
+trainData<-cbind(classe,predictor)
+```
+
+```{r}
+rfModel <- randomForest(classe ~ .,data = trainData,importance = TRUE,ntrees = 10)
+```
+
+*The out of Bag error rate plot*
+
+```{r}
+par(mar=c(3,4,4,4))                               
+plot(rfModel) 
+```
+
+*Variable Importance Plot*
+
+```{r}
+varImpPlot(rfModel,cex=.5)   
+```
+
+*Predicting the test set*
+
+```{r}
+pred.test<-predict(rfModel,filtered.testing3)
+summary(pred.test)
+```
+
+*Saving the Output*
+
+```{r}
+answers<- as.vector(pred.test)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+
